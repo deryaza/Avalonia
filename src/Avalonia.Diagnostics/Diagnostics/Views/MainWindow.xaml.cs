@@ -172,7 +172,15 @@ namespace Avalonia.Diagnostics.Views
         {
             if (_hotKeys is null ||
                 DataContext is not MainViewModel vm ||
-                vm.PointerOverRoot is not TopLevel root)
+                vm.PointerOverRoot is not IInputRoot inputRoot)
+            {
+                return;
+            }
+
+            var root = inputRoot.RootElement as TopLevel
+                ?? (inputRoot.RootElement as TopLevelHost)?.VisualChildren.OfType<TopLevel>().FirstOrDefault();
+
+            if (root == null)
             {
                 return;
             }
