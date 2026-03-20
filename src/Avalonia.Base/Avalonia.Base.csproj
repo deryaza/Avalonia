@@ -17,6 +17,9 @@
   <Import Project="..\..\build\SourceGenerators.props" />
   <ItemGroup>
     <Compile Include="..\Shared\IsExternalInit.cs" Link="Compatibility\IsExternalInit.cs" />
+    <Compile Update="Reactive\SerialDisposableValue.cs">
+      <Link>Reactive\FromRxNet\SerialDisposableValue.cs</Link>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net6.0'))">

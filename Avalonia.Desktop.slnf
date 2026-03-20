@@ -54,6 +54,7 @@
       "src\\Windows\\Avalonia.Win32.Automation\\Avalonia.Win32.Automation.csproj",
       "src\\Windows\\Avalonia.Win32.Interoperability\\Avalonia.Win32.Interoperability.csproj",
       "src\\Windows\\Avalonia.Win32\\Avalonia.Win32.csproj",
+      "external\\Avalonia.Controls.DataGrid\\src\\Avalonia.Controls.DataGrid\\Avalonia.Controls.DataGrid.csproj",
       "tests\\Avalonia.Base.UnitTests\\Avalonia.Base.UnitTests.csproj",
       "tests\\Avalonia.Benchmarks\\Avalonia.Benchmarks.csproj",
       "tests\\Avalonia.Build.Tasks.UnitTest\\Avalonia.Build.Tasks.UnitTest.csproj",

@@ -17,7 +17,7 @@ namespace Avalonia.Diagnostics
         /// <param name="dpi">Dpi quality.</param>
         public static void RenderTo(this Control source, Stream destination, double dpi = 96)
         {
-            var transform = source.CompositionVisual?.TryGetServerGlobalTransform();
+            var transform = source.CompositionVisual?.TryGetValidReadback()?.Matrix;
             if (transform == null)
                 return;
 

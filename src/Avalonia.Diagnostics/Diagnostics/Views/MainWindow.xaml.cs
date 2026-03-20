@@ -39,7 +39,7 @@ namespace Avalonia.Diagnostics.Views
                 {
                     if (x is RawPointerEventArgs pointerEventArgs)
                     {
-                        _lastPointerPosition = ((Visual)x.Root).PointToScreen(pointerEventArgs.Position);
+                        _lastPointerPosition = ((PresentationSource)x.Root).PointToScreen(pointerEventArgs.Position);
                     }
                     else if (x is RawKeyEventArgs keyEventArgs && keyEventArgs.Type == RawKeyEventType.KeyDown)
                     {

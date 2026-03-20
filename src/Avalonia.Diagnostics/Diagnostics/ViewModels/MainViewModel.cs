@@ -50,23 +50,19 @@ namespace Avalonia.Diagnostics.ViewModels
             SelectedTab = 0;
             if (root is TopLevel topLevel)
             {
-                _pointerOverRoot = topLevel;
-                _pointerOverSubscription = topLevel.GetObservable(TopLevel.PointerOverElementProperty)
-                    .Subscribe(x => PointerOverElement = x);
+                _pointerOverRoot = topLevel.PresentationSource;
 
             }
-            else
-            {
-                _pointerOverSubscription = InputManager.Instance!.PreProcess
-                    .Subscribe(e =>
-                        {
-                            if (e is Input.Raw.RawPointerEventArgs pointerEventArgs)
-                            {
-                                PointerOverRoot = pointerEventArgs.Root;
-                                PointerOverElement = pointerEventArgs.Root.InputHitTest(pointerEventArgs.Position);
-                            }
-                        });
-            }
+
+            _pointerOverSubscription = InputManager.Instance!.PostProcess
+                .Subscribe(e =>
+                {
+                    if (e is Input.Raw.RawPointerEventArgs pointerEventArgs)
+                    {
+                        PointerOverRoot = pointerEventArgs.Root;
+                        PointerOverElement = pointerEventArgs.Root.PointerOverElement;
+                    }
+                });
         }
 
         public bool FreezePopups
