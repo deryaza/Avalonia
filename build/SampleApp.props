@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\Avalonia.Diagnostics\Avalonia.Diagnostics.csproj" />
   </ItemGroup>
 
   <Target Name="GatherReferences" AfterTargets="CoreCompile">
