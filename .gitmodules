@@ -7,3 +7,6 @@
 [submodule "Avalonia.Controls.DataGrid"]
 	path = external/Avalonia.Controls.DataGrid
 	url = https://github.com/deryaza/Avalonia.Controls.DataGrid.git
+[submodule "external/ReactiveUI.Avalonia"]
+	path = external/ReactiveUI.Avalonia
+	url = https://github.com/deryaza/ReactiveUI.Avalonia.git
