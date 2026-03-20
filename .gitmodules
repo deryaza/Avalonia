@@ -4,3 +4,6 @@
 [submodule "Avalonia.DBus"]
 	path = external/Avalonia.DBus
 	url = https://github.com/AvaloniaUI/Avalonia.DBus.git
+[submodule "Avalonia.Controls.DataGrid"]
+	path = external/Avalonia.Controls.DataGrid
+	url = https://github.com/deryaza/Avalonia.Controls.DataGrid.git
