@@ -10,7 +10,6 @@ namespace Sandbox
         public static AppBuilder BuildAvaloniaApp() =>
             AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-                .WithDeveloperTools()
                 .LogToTrace();
     }
 }

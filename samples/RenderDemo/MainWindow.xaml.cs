@@ -1,5 +1,6 @@
 using System;
 using System.Linq.Expressions;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Rendering;
@@ -13,6 +14,7 @@ namespace RenderDemo
         public MainWindow()
         {
             InitializeComponent();
+            this.AttachDevTools();
 
             var vm = new MainWindowViewModel();
 

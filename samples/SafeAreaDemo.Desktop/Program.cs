@@ -16,7 +16,6 @@ namespace SafeAreaDemo.Desktop
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-                .WithDeveloperTools()
                 .LogToTrace();
     }
 }

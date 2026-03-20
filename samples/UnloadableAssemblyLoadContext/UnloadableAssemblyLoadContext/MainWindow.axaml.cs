@@ -29,6 +29,10 @@ public partial class MainWindow : Window
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+        if (Debugger.IsAttached)
+        {
+            this.AttachDevTools();
+        }
     }
     private PlugTool? _plugTool;
     protected override void OnOpened(EventArgs e)

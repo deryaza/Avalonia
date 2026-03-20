@@ -34,7 +34,6 @@ namespace GpuInterop
                         UseDebug = true
                     }
                 })
-                .WithDeveloperTools()
                 .LogToTrace(LogEventLevel.Debug, "Vulkan");
     }
 }
