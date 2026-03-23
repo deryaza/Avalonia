@@ -204,7 +204,7 @@ namespace Avalonia.Diagnostics.Views
                 new TextToValueConverter(),
                 t =>
                 {
-                    t.Watermark = "(null)";
+                    t.PlaceholderText = "(null)";
                 },
                 readonlyProperty: TextBox.IsReadOnlyProperty);
 
