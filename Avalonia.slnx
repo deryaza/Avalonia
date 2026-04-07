@@ -54,6 +54,7 @@
     <File Path="build/DevAnalyzers.props" />
     <File Path="build/EmbedXaml.props" />
     <File Path="build/HarfBuzzSharp.props" />
+    <File Path="build/MicroCOM.props" />
     <File Path="build/NetAnalyzers.props" />
     <File Path="build/NullableEnable.props" />
     <File Path="build/ReferenceCoreLibraries.props" />
@@ -71,7 +72,7 @@
     <Project Path="samples/AppWithoutLifetime/AppWithoutLifetime.csproj" />
     <Project Path="samples/BindingDemo/BindingDemo.csproj" />
     <Project Path="samples/ControlCatalog.Android/ControlCatalog.Android.csproj">
-      <Deploy Solution="*|Any CPU" />
+      <Deploy />
     </Project>
     <Project Path="samples/ControlCatalog.Browser/ControlCatalog.Browser.csproj" />
     <Project Path="samples/ControlCatalog.Desktop/ControlCatalog.Desktop.csproj" />
@@ -87,11 +88,11 @@
     <Project Path="samples/ReactiveUIDemo/ReactiveUIDemo.csproj" />
     <Project Path="samples/RenderDemo/RenderDemo.csproj" />
     <Project Path="samples/SafeAreaDemo.Android/SafeAreaDemo.Android.csproj">
-      <Deploy Solution="*|Any CPU" />
+      <Deploy />
     </Project>
     <Project Path="samples/SafeAreaDemo.Desktop/SafeAreaDemo.Desktop.csproj" />
     <Project Path="samples/SafeAreaDemo.iOS/SafeAreaDemo.iOS.csproj">
-      <Deploy Solution="*|Any CPU" />
+      <Deploy />
     </Project>
     <Project Path="samples/SafeAreaDemo/SafeAreaDemo.csproj" />
     <Project Path="samples/SampleControls/ControlSamples.csproj" />
@@ -139,6 +140,7 @@
   <Folder Name="/src/" />
   <Folder Name="/src/tools/" />
   <Folder Name="/Targets/">
+    <File Path="build/AnalyzerProject.targets" />
     <File Path="build/BuildTargets.targets" />
     <File Path="build/DevSingleProject.targets" />
     <File Path="build/UnitTests.NetCore.targets" />
@@ -169,15 +171,19 @@
   <Folder Name="/Tests/TestFiles/BuildTasks/">
     <Project Path="tests/TestFiles/BuildTasks/PInvoke/PInvoke.csproj" />
   </Folder>
+  <Folder Name="/Themes/">
+    <Project Path="src/Avalonia.Themes.Fluent/Avalonia.Themes.Fluent.csproj" />
+    <Project Path="src/Avalonia.Themes.Simple/Avalonia.Themes.Simple.csproj" />
+  </Folder>
   <Folder Name="/Tools/">
     <Project Path="src/tools/Avalonia.Analyzers.CodeFixes.CSharp/Avalonia.Analyzers.CodeFixes.CSharp.csproj">
-      <BuildType Solution="Debug|Any CPU" Project="Release" />
+      <BuildType Project="Release" />
     </Project>
     <Project Path="src/tools/Avalonia.Analyzers.CSharp/Avalonia.Analyzers.CSharp.csproj">
-      <BuildType Solution="Debug|Any CPU" Project="Release" />
+      <BuildType Project="Release" />
     </Project>
     <Project Path="src/tools/Avalonia.Analyzers.VisualBasic/Avalonia.Analyzers.VisualBasic.csproj">
-      <BuildType Solution="Debug|Any CPU" Project="Release" />
+      <BuildType Project="Release" />
     </Project>
     <Project Path="src/tools/Avalonia.DBus.Generators/Avalonia.DBus.Generators.csproj" />
     <Project Path="src/tools/Avalonia.Designer.HostApp/Avalonia.Designer.HostApp.csproj" />
@@ -191,7 +197,7 @@
     <Project Path="src/Windows/Avalonia.Win32/Avalonia.Win32.csproj" />
   </Folder>
   <Project Path="nukebuild/_build.csproj">
-    <Build Solution="*|Any CPU" Project="false" />
+    <Build Project="false" />
   </Project>
   <Project Path="src/Avalonia.Base/Avalonia.Base.csproj" />
   <Project Path="src/Avalonia.Build.Tasks/Avalonia.Build.Tasks.csproj" />

@@ -1,6 +1,6 @@
 ﻿{
   "solution": {
-    "path": "Avalonia.sln",
+    "path": "Avalonia.slnx",
     "projects": [
       "external\\Avalonia.Controls.DataGrid\\src\\Avalonia.Controls.DataGrid\\Avalonia.Controls.DataGrid.csproj",
       "external\\ReactiveUI.Avalonia\\src\\ReactiveUI.Avalonia\\ReactiveUI.Avalonia.csproj",
