@@ -47,16 +47,22 @@ namespace ControlCatalog
             {
                 desktopLifetime.MainWindow = new MainWindow { DataContext = new MainWindowViewModel() };
             }
-            else if(ApplicationLifetime is IActivityApplicationLifetime singleViewFactoryApplicationLifetime)
+            else if (ApplicationLifetime is IActivityApplicationLifetime singleViewFactoryApplicationLifetime)
             {
-                singleViewFactoryApplicationLifetime.MainViewFactory = () => new MainView { DataContext = new MainWindowViewModel() };
+                singleViewFactoryApplicationLifetime.MainViewFactory = () => new PageNavigationHost()
+                {
+                    Page = new MainView { DataContext = new MainWindowViewModel() }
+                };
             }
             else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewLifetime)
             {
-                singleViewLifetime.MainView = new MainView { DataContext = new MainWindowViewModel() };
+                singleViewLifetime.MainView = new PageNavigationHost()
+                {
+                    Page = new MainView { DataContext = new MainWindowViewModel() }
+                };
             }
 
-            if (this.TryGetFeature<IActivatableLifetime>() is {} activatableApplicationLifetime)
+            if (this.TryGetFeature<IActivatableLifetime>() is { } activatableApplicationLifetime)
             {
                 activatableApplicationLifetime.Activated += (sender, args) =>
                     Console.WriteLine($"App activated: {args.Kind}");
@@ -102,14 +108,14 @@ namespace ControlCatalog
         }
 
         private CatalogTheme _prevTheme;
-        public static CatalogTheme CurrentTheme => ((App)Current!)._prevTheme; 
+        public static CatalogTheme CurrentTheme => ((App)Current!)._prevTheme;
         public static void SetCatalogThemes(CatalogTheme theme)
         {
             var app = (App)Current!;
             var prevTheme = app._prevTheme;
             app._prevTheme = theme;
             var shouldReopenWindow = prevTheme != theme;
-            
+
             if (app._themeStylesContainer.Count == 0)
             {
                 app._themeStylesContainer.Add(new Style());
@@ -135,18 +141,27 @@ namespace ControlCatalog
                 if (app.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktopLifetime)
                 {
                     var oldWindow = desktopLifetime.MainWindow;
-                    var newWindow = new MainWindow();
+                    var newWindow = new MainWindow()
+                    {
+                        DataContext = new MainWindowViewModel()
+                    };
                     desktopLifetime.MainWindow = newWindow;
                     newWindow.Show();
                     oldWindow?.Close();
                 }
                 else if (app.ApplicationLifetime is IActivityApplicationLifetime singleViewFactoryApplicationLifetime)
                 {
-                    singleViewFactoryApplicationLifetime.MainViewFactory = () => new MainView { DataContext = new MainWindowViewModel() };
+                    singleViewFactoryApplicationLifetime.MainViewFactory = () => new PageNavigationHost()
+                    {
+                        Page = new MainView { DataContext = new MainWindowViewModel() }
+                    };
                 }
                 else if (app.ApplicationLifetime is ISingleViewApplicationLifetime singleViewLifetime)
                 {
-                    singleViewLifetime.MainView = new MainView();
+                    singleViewLifetime.MainView = new PageNavigationHost()
+                    {
+                        Page = new MainView { DataContext = new MainWindowViewModel() }
+                    };
                 }
             }
         }

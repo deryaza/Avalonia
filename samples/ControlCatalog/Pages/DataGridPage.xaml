@@ -1,12 +1,12 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+<ContentPage Theme="{StaticResource ScrollPage}" xmlns="https://github.com/avaloniaui"
              xmlns:local="using:ControlCatalog.Models"
              xmlns:lc="using:ControlCatalog.Converter"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:pages="clr-namespace:ControlCatalog.Pages"
+             Header="DataGrid"
              x:Class="ControlCatalog.Pages.DataGridPage"
+             xmlns:pages="clr-namespace:ControlCatalog.Pages"
              x:DataType="pages:DataGridPage">
-  <UserControl.Resources>
-
+  <ContentPage.Resources>
     <local:GDPValueConverter x:Key="GDPConverter" />
     <local:GDPdLengthConverter x:Key="GDPWidthConverter"/>
     <DataTemplate x:Key="Demo.DataTemplates.CountryHeader" x:DataType="local:Country">
@@ -18,7 +18,7 @@
     <ControlTheme x:Key="GdpCell" TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}" x:DataType="local:Country">
       <Setter Property="Background" Value="{Binding Path=GDP, Mode=OneWay, Converter={StaticResource GDPConverter}}" />
     </ControlTheme>
-  </UserControl.Resources>
+  </ContentPage.Resources>
   <Grid RowDefinitions="Auto,Auto,*">
     <StackPanel Orientation="Vertical" Spacing="4" Grid.Row="0">
       <TextBlock Classes="h2">A control for displaying and interacting with a data source.</TextBlock>
@@ -138,4 +138,4 @@
       </TabItem>
     </TabControl>
   </Grid>
-</UserControl>
+</ContentPage>
