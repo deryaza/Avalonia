@@ -210,7 +210,7 @@ namespace Avalonia.X11
                 XSetWMProtocols(_x11.Display, _handle, protocols, protocols.Length);
                 SetNetWmWindowType(X11NetWmWindowType.Normal);
                 
-                SetWmClass(_handle, _platform.Options.WmClass);
+                SetWmClass(_x11, _handle, _platform.Options.WmClass);
             }
 
             var surfaces = new List<IPlatformRenderSurface>
@@ -1441,7 +1441,7 @@ namespace Avalonia.X11
             }
         }
 
-        public void SetWmClass(IntPtr handle, string? wmClass)
+        public static void SetWmClass(X11Info x11, IntPtr handle, string? wmClass)
         {
             // See https://tronche.com/gui/x/icccm/sec-4.html#WM_CLASS
             // We don't actually parse the application's command line, so we only use RESOURCE_NAME and argv[0]
@@ -1457,7 +1457,7 @@ namespace Avalonia.X11
             {
                 hint->res_name = pAppId;
                 hint->res_class = pWmClass;
-                XSetClassHint(_x11.Display, handle, hint);
+                XSetClassHint(x11.Display, handle, hint);
             }
 
             XFree(hint);
@@ -1467,7 +1467,7 @@ namespace Avalonia.X11
         {
             if (_handle == IntPtr.Zero)
                 return;
-            SetWmClass(_handle, className ?? _platform.Options.WmClass);
+            SetWmClass(_x11, _handle, className ?? _platform.Options.WmClass);
         }
 
         public void SetMinMaxSize(Size minSize, Size maxSize)

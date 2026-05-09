@@ -134,9 +134,14 @@ namespace Avalonia.X11
 
         public ITrayIconImpl CreateTrayIcon()
         {
+            if (Options.UseXEmbedTrayMenu)
+            {
+                return new XEmbedTrayIconImpl(this, X11IconConverter);
+            }
+
             var dbusTrayIcon = new DBusTrayIconImpl();
 
-            if (!dbusTrayIcon.IsActive) return new XEmbedTrayIconImpl();
+            if (!dbusTrayIcon.IsActive) return new XEmbedTrayIconImpl(this, X11IconConverter);
 
             dbusTrayIcon.IconConverterDelegate = X11IconConverter;
 
@@ -380,6 +385,11 @@ namespace Avalonia
         /// The default value is true.
         /// </summary>
         public bool UseDBusMenu { get; set; } = true;
+        
+        /// <summary>
+        /// Forces the use of XEmbed protocol for tray icon.
+        /// </summary>
+        public bool UseXEmbedTrayMenu { get; set; }
 
         /// <summary>
         /// Enables DBus file picker instead of GTK.

@@ -144,6 +144,7 @@ namespace ControlCatalog.Desktop
                 .UsePlatformDetect()
                 .With(new X11PlatformOptions
                 {
+                    UseXEmbedTrayMenu = true,
                     EnableMultiTouch = true,
                     UseDBusMenu = true,
                     EnableIme = true,

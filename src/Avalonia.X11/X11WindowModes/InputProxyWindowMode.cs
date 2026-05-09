@@ -13,7 +13,7 @@ partial class X11Window
         public override void OnHandleCreated(IntPtr handle)
         {
             _focusProxy = new X11FocusProxy(Platform, handle, OnFocusProxyEvent);
-            Window.SetWmClass(_focusProxy._handle, "FocusProxy");
+            SetWmClass(Window._platform.Info, _focusProxy._handle, "FocusProxy");
             base.OnHandleCreated(handle);
         }
 
