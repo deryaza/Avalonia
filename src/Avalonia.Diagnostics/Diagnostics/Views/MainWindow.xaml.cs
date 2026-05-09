@@ -22,7 +22,7 @@ namespace Avalonia.Diagnostics.Views
         private readonly IDisposable? _inputSubscription;
         private readonly HashSet<Popup> _frozenPopupStates;
         private AvaloniaObject? _root;
-        private PixelPoint _lastPointerPosition;
+        private PixelPoint? _lastPointerPosition;
         private HotKeyConfiguration? _hotKeys;
 
         public MainWindow()
@@ -124,7 +124,12 @@ namespace Avalonia.Diagnostics.Views
 
         private Control? GetHoveredControl(TopLevel topLevel)
         {
-            var point = topLevel.PointToClient(_lastPointerPosition);
+            if (_lastPointerPosition == null)
+            {
+                return null;
+            }
+
+            var point = topLevel.PointToClient(_lastPointerPosition.Value);
 
             return (Control?)topLevel.GetVisualsAt(point, x =>
                 {
