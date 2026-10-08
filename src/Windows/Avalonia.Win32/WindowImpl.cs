@@ -108,6 +108,7 @@ namespace Avalonia.Win32
         internal bool _ignoreWmChar;
         private WindowTransparencyLevel _transparencyLevel;
         private readonly WindowTransparencyLevel _defaultTransparencyLevel;
+        private WindowCornerPreference _cornerPreference;
 
         private const int MaxPointerHistorySize = 512;
         private static readonly PooledList<RawPointerPoint> s_intermediatePointsPooledList = new();
@@ -117,6 +118,7 @@ namespace Avalonia.Win32
         private static POINTER_INFO[]? s_historyInfos;
         private static MOUSEMOVEPOINT[]? s_mouseHistoryInfos;
         private PlatformThemeVariant _currentThemeVariant;
+        private Win32TopLevelSceneInfo _sceneInfo = new(PlatformThemeVariant.Light);
 
         public WindowImpl()
         {
@@ -214,6 +216,10 @@ namespace Avalonia.Win32
         public Action? LostFocus { get; set; }
 
         public Action<WindowTransparencyLevel>? TransparencyLevelChanged { get; set; }
+
+        public object? PlatformSpecificSceneInfo => _sceneInfo;
+
+        public Action<object?>? PlatformSpecificSceneInfoChanged { get; set; }
 
         public Thickness BorderThickness
         {
@@ -373,6 +379,13 @@ namespace Avalonia.Win32
 
         public void SetTransparencyLevelHint(IReadOnlyList<WindowTransparencyLevel> transparencyLevels)
         {
+            if (transparencyLevels.Count == 1 && transparencyLevels[0] == WindowTransparencyLevel.None)
+            {
+                // Explicitly disable transparency. Ignore the UseRedirectionBitmap property.
+                TransparencyLevel = WindowTransparencyLevel.None;
+                return;
+            }
+
             foreach (var level in transparencyLevels)
             {
                 if (!IsSupported(level))
@@ -429,43 +442,29 @@ namespace Avalonia.Win32
             return false;
         }
 
+        // The composition effects themselves are applied by the render target on the render thread,
+        // based on the transparency level and theme variant it receives with RenderTargetSceneInfo.
+        // Here we only adjust the DWM window attributes that have to be set from the UI thread.
+
         private bool SetTransparencyTransparent()
         {
-            if (CompositionEffectsSurface is { } surface)
-            {
-                surface.SetBlur(BlurEffect.None);
+            if (CompositionEffectsSurface is not null)
                 return true;
-            }
-            else
-            {
-                return SetLegacyTransparency(true);
-            }
+
+            return SetLegacyTransparency(true);
         }
 
         private bool SetTransparencyAcrylicBlur()
         {
             SetUseHostBackdropBrush(true);
             SetLegacyTransparency(false);
-
-            CompositionEffectsSurface!.SetBlur(BlurEffect.Acrylic);
             return true;
         }
 
-        /// <summary>
-        /// Sets the transparency mica
-        /// </summary>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
         private bool SetTransparencyMica()
         {
             SetUseHostBackdropBrush(false);
             SetLegacyTransparency(false);
-
-            CompositionEffectsSurface!.SetBlur(_currentThemeVariant switch
-            {
-                PlatformThemeVariant.Light => BlurEffect.MicaLight,
-                PlatformThemeVariant.Dark => BlurEffect.MicaDark,
-                _ => throw new ArgumentOutOfRangeException()
-            });
             return true;
         }
 
@@ -530,7 +529,7 @@ namespace Avalonia.Win32
                     0,
                     SetWindowPosFlags.SWP_NOSIZE | SetWindowPosFlags.SWP_NOACTIVATE | SetWindowPosFlags.SWP_NOZORDER);
 
-                if (ShCoreAvailable && Win32Platform.WindowsVersion >= PlatformConstants.Windows8_1)
+                if (GetDpiForMonitorAvailable)
                 {
                     var monitor = MonitorFromWindow(Handle.Handle, MONITOR.MONITOR_DEFAULTTONEAREST);
 
@@ -767,21 +766,19 @@ namespace Avalonia.Win32
         {
             e.Pointer.Capture(null);
 
+            if (!e.Pointer.IsPrimary)
+            {
+                throw new InvalidOperationException("BeginMoveDrag Failed");
+            }
+
             Dispatcher.UIThread.Post(() =>
             {
-                if (e.Pointer.IsPrimary)
-                {
-                    // SendMessage's return value is dependent on the message send.  WM_SYSCOMMAND
-                    // and WM_LBUTTONUP return value just signify whether the WndProc handled the
-                    // message or not, so they are not interesting
+                // SendMessage's return value is dependent on the message send.  WM_SYSCOMMAND
+                // and WM_LBUTTONUP return value just signify whether the WndProc handled the
+                // message or not, so they are not interesting
 
-                    SendMessage(_hwnd, (int)WindowsMessage.WM_SYSCOMMAND, (IntPtr)SC_MOUSEMOVE, IntPtr.Zero);
-                    SendMessage(_hwnd, (int)WindowsMessage.WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
-                }
-                else
-                {
-                    throw new InvalidOperationException("BeginMoveDrag Failed");
-                }
+                SendMessage(_hwnd, (int)WindowsMessage.WM_SYSCOMMAND, (IntPtr)SC_MOUSEMOVE, IntPtr.Zero);
+                SendMessage(_hwnd, (int)WindowsMessage.WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
             }, DispatcherPriority.Send);
         }
 
@@ -940,12 +937,17 @@ namespace Avalonia.Win32
             }
         }
 
-        public unsafe void SetFrameThemeVariant(PlatformThemeVariant themeVariant)
+        public unsafe void SetFrameThemeVariant(PlatformThemeVariant? themeVariant)
         {
-            _currentThemeVariant = themeVariant;
+            _currentThemeVariant = themeVariant ?? Win32Platform.Instance.PlatformSettings.GetColorValues().ThemeVariant;
+            if (_sceneInfo.ThemeVariant != _currentThemeVariant)
+            {
+                _sceneInfo = new Win32TopLevelSceneInfo(_currentThemeVariant);
+                PlatformSpecificSceneInfoChanged?.Invoke(_sceneInfo);
+            }
             if (Win32Platform.WindowsVersion.Build >= 22000)
             {
-                var pvUseBackdropBrush = themeVariant == PlatformThemeVariant.Dark ? 1 : 0;
+                var pvUseBackdropBrush = _currentThemeVariant == PlatformThemeVariant.Dark ? 1 : 0;
                 DwmSetWindowAttribute(
                     _hwnd,
                     (int)DwmWindowAttribute.DWMWA_USE_IMMERSIVE_DARK_MODE,
@@ -1017,7 +1019,7 @@ namespace Avalonia.Win32
 
             RegisterTouchWindow(_hwnd, 0);
 
-            if (ShCoreAvailable && Win32Platform.WindowsVersion >= PlatformConstants.Windows8_1)
+            if (GetDpiForMonitorAvailable)
             {
                 var monitor = MonitorFromWindow(
                     _hwnd,
@@ -1101,6 +1103,12 @@ namespace Avalonia.Win32
                 _savedWindowInfo.WindowRect = windowRect;
                 _savedWindowInfo.Style = current;
                 _savedWindowInfo.ExStyle = currentEx;
+
+                if (current.HasAllFlags(WindowStyles.WS_SYSMENU))
+                {
+                    // Create the system menu copy before fullscreen removes WS_SYSMENU.
+                    GetSystemMenu(_hwnd, false);
+                }
 
                 // Set new window style and size.
                 SetStyle(current & ~WindowStyles.WS_OVERLAPPEDWINDOW, false);
@@ -1190,6 +1198,18 @@ namespace Avalonia.Win32
             return margins;
         }
 
+        private void UpdateWindowCornerPreference()
+        {
+            if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+                return;
+
+            unsafe
+            {
+                var preference = (int)_cornerPreference;
+                DwmSetWindowAttribute(_hwnd, (int)DwmWindowAttribute.DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(int));
+            }
+        }
+
         private void ExtendClientArea()
         {
             if (!_shown)
@@ -1212,10 +1232,6 @@ namespace Avalonia.Win32
 
                 // Make sure that Windows still paints the non-client area so we get native borders and shadows.
                 SetNCRenderingPolicy(DwmNCRenderingPolicy.DWMNCRP_ENABLED);
-
-                // On Windows 11 21H2 and later, corners are configurable.
-                if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
-                    SetWindowCornerPreference(DwmWindowCornerPreference.DWMWCP_ROUND);
             }
             else
             {
@@ -1224,25 +1240,7 @@ namespace Avalonia.Win32
 
                 _extendedMargins = new Thickness();
 
-                if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
-                    SetWindowCornerPreference(DwmWindowCornerPreference.DWMWCP_DEFAULT);
-
                 SetNCRenderingPolicy(DwmNCRenderingPolicy.DWMNCRP_USEWINDOWSTYLE);
-
-                unsafe
-                {
-                    int cornerPreference = (int)DwmWindowCornerPreference.DWMWCP_DEFAULT;
-                    DwmSetWindowAttribute(_hwnd, (int)DwmWindowAttribute.DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPreference, sizeof(int));
-                }
-            }
-
-            if (!_isClientAreaExtended)
-            {
-                EnableCloseButton(_hwnd);
-            }
-            else
-            {
-                DisableCloseButton(_hwnd);
             }
 
             // Inform the application of the frame change.
@@ -1254,9 +1252,6 @@ namespace Avalonia.Win32
 
             ExtendClientAreaToDecorationsChanged?.Invoke(_isClientAreaExtended);
         }
-
-        private unsafe void SetWindowCornerPreference(DwmWindowCornerPreference value)
-            => DwmSetWindowAttribute(_hwnd, (int)DwmWindowAttribute.DWMWA_WINDOW_CORNER_PREFERENCE, &value, sizeof(int));
 
         private unsafe void SetNCRenderingPolicy(DwmNCRenderingPolicy value)
             => DwmSetWindowAttribute(_hwnd, (int)DwmWindowAttribute.DWMWA_NCRENDERING_POLICY, &value, sizeof(int));
@@ -1543,19 +1538,6 @@ namespace Avalonia.Win32
         private const int MF_ENABLED = 0x0;
         private const int MF_GRAYED = 0x1;
         private const int MF_DISABLED = 0x2;
-        private const int SC_CLOSE = 0xF060;
-
-        private static void DisableCloseButton(IntPtr hwnd)
-        {
-            EnableMenuItem(GetSystemMenu(hwnd, false), SC_CLOSE,
-                           MF_BYCOMMAND | MF_DISABLED | MF_GRAYED);
-        }
-
-        private static void EnableCloseButton(IntPtr hwnd)
-        {
-            EnableMenuItem(GetSystemMenu(hwnd, false), SC_CLOSE,
-                           MF_BYCOMMAND | MF_ENABLED);
-        }
 
         private RECT ClientRectToWindowRect(RECT clientRect, WindowStyles? styleOverride = null, WindowStyles? extendedStyleOverride = null)
         {
@@ -1606,6 +1588,12 @@ namespace Avalonia.Win32
             _extendTitleBarHint = titleBarHeight;
 
             ExtendClientArea();
+        }
+
+        public void SetWindowCornerPreference(WindowCornerPreference preference)
+        {
+            _cornerPreference = preference;
+            UpdateWindowCornerPreference();
         }
 
         /// <inheritdoc/>

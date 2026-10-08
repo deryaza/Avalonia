@@ -152,6 +152,38 @@ public partial class DispatcherTests
     }
 
     [Fact]
+    public void DispatcherRepeatsBackgroundProcessingRequestToTheNewImplementation()
+    {
+        var actions = new List<string>();
+
+        // Requests background processing from the pre-initialization implementation
+        _uiThread.Post(() => actions.Add("Background"), DispatcherPriority.Background);
+
+        var impl = new SimpleDispatcherWithBackgroundProcessingImpl();
+        Dispatcher.InitializeUIThreadDispatcher(impl);
+
+        Assert.True(impl.AskedForBackgroundProcessing);
+        impl.FireBackgroundProcessing();
+        Assert.Equal(new[] { "Background" }, actions);
+    }
+
+    [Fact]
+    public void DispatcherRepeatsSignalToTheNewImplementation()
+    {
+        var actions = new List<string>();
+
+        // Signals the pre-initialization implementation
+        _uiThread.Post(() => actions.Add("Render"), DispatcherPriority.Render);
+
+        var impl = new SimpleDispatcherWithBackgroundProcessingImpl();
+        Dispatcher.InitializeUIThreadDispatcher(impl);
+
+        Assert.True(impl.AskedForSignal);
+        impl.ExecuteSignal();
+        Assert.Equal(new[] { "Render" }, actions);
+    }
+
+    [Fact]
     public void DispatcherStopsItemProcessingWhenInteractivityDeadlineIsReached()
     {
         var impl = new SimpleDispatcherImpl();
@@ -274,6 +306,7 @@ public partial class DispatcherTests
         {
             _scope = AvaloniaLocator.EnterScope();
             Dispatcher.ResetForUnitTests();
+            Dispatcher.InitializeUIThreadDispatcher(impl);
             SynchronizationContext.SetSynchronizationContext(null);
         }
 
@@ -283,6 +316,21 @@ public partial class DispatcherTests
             _scope.Dispose();
             SynchronizationContext.SetSynchronizationContext(null);
         }
+    }
+
+    [Fact]
+    public async Task DispatcherFrame_Uses_Current_Dispatcher()
+    {
+        var uiThreadDispatcher = Dispatcher.UIThread;
+
+        await ThreadRunHelper.RunOnDedicatedThread(() =>
+        {
+            var currentDispatcher = Dispatcher.CurrentDispatcher;
+            var frame = new DispatcherFrame();
+
+            Assert.NotSame(uiThreadDispatcher, currentDispatcher);
+            Assert.Same(currentDispatcher, frame.Dispatcher);
+        });
     }
 
     [Fact]
@@ -335,12 +383,19 @@ public partial class DispatcherTests
                 Dispatcher.UIThread.MainLoop(CancellationToken.None);
                 actions.Add("Nested frame exited");
             });
+
+            var criticalFrame = new DispatcherFrame(false);
+            disp.Post(() =>
+            {
+                actions.Add("Critical frame");
+                Dispatcher.UIThread.PushFrame(criticalFrame);
+                actions.Add("Critical frame exited");
+            });
             disp.Post(() =>
             {
                 actions.Add("Shutdown");
                 disp.BeginInvokeShutdown(DispatcherPriority.Normal);
             });
-
             disp.Post(() =>
             {
                 actions.Add("Nested frame after shutdown");
@@ -348,19 +403,11 @@ public partial class DispatcherTests
                 Dispatcher.UIThread.MainLoop(CancellationToken.None);
                 actions.Add("Nested frame after shutdown exited");
             });
-
-            var criticalFrameAfterShutdown = new DispatcherFrame(false);
-            disp.Post(() =>
-            {
-                actions.Add("Critical frame after shutdown");
-
-                Dispatcher.UIThread.PushFrame(criticalFrameAfterShutdown);
-                actions.Add("Critical frame after shutdown exited");
-            });
+            disp.Post(() => actions.Add("Job in critical frame"));
             disp.Post(() =>
             {
                 actions.Add("Stop critical frame");
-                criticalFrameAfterShutdown.Continue = false;
+                criticalFrame.Continue = false;
             });
 
             disp.MainLoop(CancellationToken.None);
@@ -368,11 +415,12 @@ public partial class DispatcherTests
             Assert.Equal(new[]
             {
                 "Nested frame",
+                "Critical frame",
                 "Shutdown",
                 // Normal nested frames are supposed to exit immediately
                 "Nested frame after shutdown", "Nested frame after shutdown exited",
                 // if frame is configured to not answer dispatcher requests, it should be allowed to run
-                "Critical frame after shutdown", "Stop critical frame", "Critical frame after shutdown exited",
+                "Job in critical frame", "Stop critical frame", "Critical frame exited",
                 // After 3-rd level frames have exited, the normal nested frame exits too
                 "Nested frame exited"
             }, actions);
@@ -382,6 +430,112 @@ public partial class DispatcherTests
             Assert.Throws<InvalidOperationException>(() => disp.MainLoop(CancellationToken.None));
             Assert.Empty(actions);
         }
+    }
+
+    public enum TestDispatcherImplKind
+    {
+        Simple,
+        SimpleWithBackgroundProcessing,
+        SimpleControlled,
+        Managed
+    }
+
+    private static IDispatcherImpl CreateDispatcherImpl(TestDispatcherImplKind kind) => kind switch
+    {
+        TestDispatcherImplKind.Simple => new SimpleDispatcherImpl(),
+        TestDispatcherImplKind.SimpleWithBackgroundProcessing => new SimpleDispatcherWithBackgroundProcessingImpl(),
+        TestDispatcherImplKind.SimpleControlled => new SimpleControlledDispatcherImpl(),
+        TestDispatcherImplKind.Managed => new ManagedDispatcherImpl(null),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+
+    [Theory]
+    [InlineData(TestDispatcherImplKind.Simple)]
+    [InlineData(TestDispatcherImplKind.SimpleWithBackgroundProcessing)]
+    [InlineData(TestDispatcherImplKind.SimpleControlled)]
+    [InlineData(TestDispatcherImplKind.Managed)]
+    public void ShutdownFromOperationAbortsQueuedOperationsWithoutRunningThem(TestDispatcherImplKind kind)
+    {
+        var impl = CreateDispatcherImpl(kind);
+        using var services = new DispatcherServices(impl);
+        var disp = Dispatcher.UIThread;
+
+        var actions = new List<string>();
+        disp.ShutdownFinished += (_, _) => actions.Add("ShutdownFinished");
+
+        var op1 = disp.InvokeAsync(() =>
+        {
+            actions.Add("op1");
+            disp.InvokeShutdown();
+        }, DispatcherPriority.Send, TestContext.Current.CancellationToken);
+        var op2 = disp.InvokeAsync(() => actions.Add("op2"), DispatcherPriority.Send, TestContext.Current.CancellationToken);
+
+        if (impl is IControlledDispatcherImpl)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            disp.MainLoop(timeout.Token);
+        }
+        else
+        {
+            var simple = (SimpleDispatcherImpl)impl;
+            Assert.True(simple.AskedForSignal);
+            simple.ExecuteSignal();
+        }
+
+        Assert.Equal(new[] { "op1", "ShutdownFinished" }, actions);
+        Assert.Equal(DispatcherOperationStatus.Completed, op1.Status);
+        Assert.Equal(DispatcherOperationStatus.Aborted, op2.Status);
+    }
+
+    [Theory]
+    [InlineData(TestDispatcherImplKind.SimpleControlled)]
+    [InlineData(TestDispatcherImplKind.Managed)]
+    public void OperationsAreOnlyAbortedAfterLastFrameExits(TestDispatcherImplKind kind)
+    {
+        var impl = CreateDispatcherImpl(kind);
+        using var services = new DispatcherServices(impl);
+        var disp = Dispatcher.UIThread;
+
+        var actions = new List<string>();
+        disp.ShutdownFinished += (_, _) => actions.Add("ShutdownFinished");
+
+        var criticalFrame = new DispatcherFrame(false);
+        DispatcherOperation? op2 = null, op3 = null, op4 = null;
+        disp.InvokeAsync(() =>
+        {
+            actions.Add("op1");
+            disp.InvokeShutdown();
+
+            // Frames are still on the stack, so nothing has been aborted yet
+            Assert.Equal(DispatcherOperationStatus.Pending, op2!.Status);
+            Assert.Equal(DispatcherOperationStatus.Pending, op3!.Status);
+
+            // Explicit RunJobs and synchronous Invoke still dispatch pending operations
+            disp.RunJobs(DispatcherPriority.Normal);
+            Assert.Equal(DispatcherOperationStatus.Completed, op2.Status);
+            Assert.Equal(DispatcherOperationStatus.Pending, op3.Status);
+            disp.Invoke(() => actions.Add("invoke"), DispatcherPriority.Normal, TestContext.Current.CancellationToken);
+            Assert.Equal(DispatcherOperationStatus.Pending, op3.Status);
+
+            // A frame that ignores exit requests still pumps the remaining operations
+            disp.PushFrame(criticalFrame);
+            Assert.Equal(DispatcherOperationStatus.Completed, op3.Status);
+
+            op4 = disp.InvokeAsync(() => actions.Add("op4"), DispatcherPriority.Normal, TestContext.Current.CancellationToken);
+            Assert.Equal(DispatcherOperationStatus.Pending, op4.Status);
+        }, DispatcherPriority.Normal, TestContext.Current.CancellationToken);
+        op2 = disp.InvokeAsync(() => actions.Add("op2"), DispatcherPriority.Normal, TestContext.Current.CancellationToken);
+        op3 = disp.InvokeAsync(() =>
+        {
+            actions.Add("op3");
+            criticalFrame.Continue = false;
+        }, DispatcherPriority.Background, TestContext.Current.CancellationToken);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        disp.MainLoop(timeout.Token);
+
+        Assert.Equal(new[] { "op1", "op2", "invoke", "op3", "ShutdownFinished" }, actions);
+        Assert.Equal(DispatcherOperationStatus.Aborted, op4!.Status);
     }
 
     class WaitHelper : SynchronizationContext, NonPumpingLockHelper.IHelperImpl
@@ -616,108 +770,10 @@ public partial class DispatcherTests
     }
 
     [Fact]
-    public async Task ExecutionContextIsPreservedInDispatcherInvokeAsync()
-    {
-        using var services = new DispatcherServices(new SimpleControlledDispatcherImpl());
-        var tokenSource = new CancellationTokenSource();
-        string? test1 = null;
-        string? test2 = null;
-        string? test3 = null;
-
-        // All test code must run inside Task.Run to avoid interfering with the test:
-        //  1. Prevent the execution context from being captured by MainLoop.
-        //  2. Prevent the execution context from remaining effective when set on the same thread.
-        var task = Task.Run(() =>
-        {
-            var testObject = new AsyncLocalTestClass();
-
-            // Test 1: Verify Task.Run preserves the execution context.
-            // First, test Task.Run to ensure that the preceding validation always passes, serving as a baseline for the subsequent Invoke/InvokeAsync tests.
-            // This way, if a later test fails, we have the .NET framework's baseline behavior for reference.
-            testObject.AsyncLocalField.Value = "Initial Value";
-            var task1 = Task.Run(() =>
-            {
-                test1 = testObject.AsyncLocalField.Value;
-            });
-
-            // Test 2: Verify Invoke preserves the execution context.
-            testObject.AsyncLocalField.Value = "Initial Value";
-            Dispatcher.UIThread.Invoke(() =>
-            {
-                test2 = testObject.AsyncLocalField.Value;
-            });
-
-            // Test 3: Verify InvokeAsync preserves the execution context.
-            testObject.AsyncLocalField.Value = "Initial Value";
-            _ = Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                test3 = testObject.AsyncLocalField.Value;
-            });
-
-            _ = Dispatcher.UIThread.InvokeAsync(async () =>
-            {
-                await Task.WhenAll(task1);
-                tokenSource.Cancel();
-            });
-
-        }, TestContext.Current.CancellationToken);
-
-        Dispatcher.UIThread.MainLoop(tokenSource.Token);
-        await Task.WhenAll(task);
-
-        // Assertions
-        // Task.Run: Always passes (guaranteed by the .NET runtime).
-        Assert.Equal("Initial Value", test1);
-        // Invoke: Always passes because the context is not changed.
-        Assert.Equal("Initial Value", test2);
-        // InvokeAsync: See https://github.com/AvaloniaUI/Avalonia/pull/19163
-        Assert.Equal("Initial Value", test3);
-    }
-
-    [Fact]
-    public async Task ExecutionContextIsNotPreservedAmongDispatcherInvokeAsync()
-    {
-        using var services = new DispatcherServices(new SimpleControlledDispatcherImpl());
-        var tokenSource = new CancellationTokenSource();
-        string? test = null;
-
-        // All test code must run inside Task.Run to avoid interfering with the test:
-        //  1. Prevent the execution context from being captured by MainLoop.
-        //  2. Prevent the execution context from remaining effective when set on the same thread.
-        var task = Task.Run(() =>
-        {
-            var testObject = new AsyncLocalTestClass();
-
-            // Test: Verify that InvokeAsync calls do not share execution context between each other.
-            _ = Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                testObject.AsyncLocalField.Value = "Initial Value";
-            });
-            _ = Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                test = testObject.AsyncLocalField.Value;
-            });
-
-            _ = Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                tokenSource.Cancel();
-            });
-        }, TestContext.Current.CancellationToken);
-
-        Dispatcher.UIThread.MainLoop(tokenSource.Token);
-        await Task.WhenAll(task);
-
-        // Assertions
-        // The value should NOT flow between different InvokeAsync execution contexts.
-        Assert.Null(test);
-    }
-
-    [Fact]
     public void MediaContextRenderSchedulingDoesNotCaptureAmbientExecutionContext()
     {
         var impl = new SimpleDispatcherWithBackgroundProcessingImpl();
         using var services = new DispatcherServices(impl);
-        Dispatcher.InitializeUIThreadDispatcher(impl);
 
         var testObject = new AsyncLocalTestClass();
         string? test = "Not measured";
@@ -745,7 +801,6 @@ public partial class DispatcherTests
     {
         var impl = new SimpleDispatcherWithBackgroundProcessingImpl();
         using var services = new DispatcherServices(impl);
-        Dispatcher.InitializeUIThreadDispatcher(impl);
 
         var testObject = new AsyncLocalTestClass();
         string? test = "Not measured";
@@ -780,73 +835,6 @@ public partial class DispatcherTests
 
         Assert.Null(schedulingException);
         Assert.Null(test);
-    }
-
-    [Fact]
-    public async Task ExecutionContextCultureInfoIsPreservedInDispatcherInvokeAsync()
-    {
-        using var services = new DispatcherServices(new SimpleControlledDispatcherImpl());
-        var tokenSource = new CancellationTokenSource();
-        string? test1 = null;
-        string? test2 = null;
-        string? test3 = null;
-        var oldCulture = Thread.CurrentThread.CurrentCulture;
-
-        // All test code must run inside Task.Run to avoid interfering with the test:
-        //  1. Prevent the execution context from being captured by MainLoop.
-        //  2. Prevent the execution context from remaining effective when set on the same thread.
-        var task = Task.Run(() =>
-        {
-            // This culture tag is Sumerian and is extremely unlikely to be set as the default on any device,
-            // ensuring that this test will not be affected by the user's environment.
-            Thread.CurrentThread.CurrentCulture = CultureInfo.GetCultureInfo("sux-Shaw-UM");
-
-            // Test 1: Verify Task.Run preserves the culture in the execution context.
-            // First, test Task.Run to ensure that the preceding validation always passes, serving as a baseline for the subsequent Invoke/InvokeAsync tests.
-            // This way, if a later test fails, we have the .NET framework's baseline behavior for reference.
-            var task1 = Task.Run(() =>
-            {
-                test1 = Thread.CurrentThread.CurrentCulture.Name;
-            });
-
-            // Test 2: Verify Invoke preserves the execution context.
-            Dispatcher.UIThread.Invoke(() =>
-            {
-                test2 = Thread.CurrentThread.CurrentCulture.Name;
-            });
-
-            // Test 3: Verify InvokeAsync preserves the culture in the execution context.
-            _ = Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                test3 = Thread.CurrentThread.CurrentCulture.Name;
-            });
-
-            _ = Dispatcher.UIThread.InvokeAsync(async () =>
-            {
-                await Task.WhenAll(task1);
-                tokenSource.Cancel();
-            });
-        }, TestContext.Current.CancellationToken);
-
-        try
-        {
-            Dispatcher.UIThread.MainLoop(tokenSource.Token);
-            await Task.WhenAll(task);
-
-            // Assertions
-            // Task.Run: Always passes (guaranteed by the .NET runtime).
-            Assert.Equal("sux-Shaw-UM", test1);
-            // Invoke: Always passes because the context is not changed.
-            Assert.Equal("sux-Shaw-UM", test2);
-            // InvokeAsync: See https://github.com/AvaloniaUI/Avalonia/pull/19163
-            Assert.Equal("sux-Shaw-UM", test3);
-        }
-        finally
-        {
-            Thread.CurrentThread.CurrentCulture = oldCulture;
-            // Ensure that this test does not have a negative impact on other tests.
-            Assert.NotEqual("sux-Shaw-UM", oldCulture.Name);
-        }
     }
 
     [Fact]

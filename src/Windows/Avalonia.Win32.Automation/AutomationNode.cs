@@ -11,7 +11,6 @@ using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls.Automation.Peers;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using Avalonia.Win32.Automation.Interop;
 using AAP = Avalonia.Automation.Provider;
 using UIA = Avalonia.Win32.Automation.Interop;
@@ -76,18 +75,7 @@ namespace Avalonia.Win32.Automation
 
         public virtual Rect GetBoundingRectangle()
         {
-            return InvokeSync(() =>
-            {
-                if (Peer.GetVisualRoot() is ControlAutomationPeer root &&
-                    root.Owner.GetPresentationSource() is not null)
-                {
-                    var originalRect = Peer.GetBoundingRectangle();
-                    return new PixelRect(root.Owner.PointToScreen(originalRect.TopLeft),
-                        root.Owner.PointToScreen(originalRect.BottomRight)).ToRect(1);
-                }
-
-                return default;
-            });
+            return InvokeSync(() => Peer.ToScreen(Peer.GetBoundingRectangle()) ?? default);
         }
 
         public virtual IRawElementProviderFragmentRoot? GetFragmentRoot()
@@ -100,7 +88,7 @@ namespace Avalonia.Win32.Automation
 
         public virtual object? GetPatternProvider(int patternId)
         {
-            AutomationNode? ThisIfPeerImplementsProvider<T>() => Peer.GetProvider<T>() is object ? this : null;
+            AutomationNode? ThisIfPeerImplementsProvider<T>() => InvokeSync(() => Peer.GetProvider<T>()) is object ? this : null;
 
             return (UiaPatternId)patternId switch
             {
@@ -226,7 +214,7 @@ namespace Avalonia.Win32.Automation
 
         protected void InvokeSync<TInterface>(Action<TInterface> action)
         {
-            if (Peer.GetProvider<TInterface>() is TInterface i)
+            if (InvokeSync(() => Peer.GetProvider<TInterface>()) is TInterface i)
             {
                 try
                 {
@@ -245,7 +233,7 @@ namespace Avalonia.Win32.Automation
 
         protected TResult InvokeSync<TInterface, TResult>(Func<TInterface, TResult> func)
         {
-            if (Peer.GetProvider<TInterface>() is TInterface i)
+            if (InvokeSync(() => Peer.GetProvider<TInterface>()) is TInterface i)
             {
                 try
                 {
@@ -301,8 +289,8 @@ namespace Avalonia.Win32.Automation
                 UiaCoreProviderApi.UiaRaiseAutomationPropertyChangedEvent(
                     this,
                     (int)id,
-                    e.OldValue as IConvertible,
-                    e.NewValue as IConvertible);
+                    e.OldValue is ExpandCollapseState o ? ToUiaExpandCollapseState(o) : e.OldValue as IConvertible,
+                    e.NewValue is ExpandCollapseState n ? ToUiaExpandCollapseState(n) : e.NewValue as IConvertible);
             }
 
             if (id == UiaPropertyId.Name && Peer.GetLiveSetting() != AutomationLiveSetting.Off)

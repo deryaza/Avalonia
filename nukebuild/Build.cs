@@ -12,7 +12,6 @@ using Nuke.Common.Tools.DotNet;
 using static Nuke.Common.EnvironmentInfo;
 using static Nuke.Common.Tools.DotNet.DotNetTasks;
 using static Serilog.Log;
-using MicroCom.CodeGenerator;
 using NuGet.Configuration;
 using NuGet.Versioning;
 using Nuke.Common.CI.AzurePipelines;
@@ -43,6 +42,9 @@ partial class Build : NukeBuild
     [NuGetPackage("dotnet-ilrepack", "ILRepackTool.dll", Framework = "net8.0")]
     Tool IlRepackTool;
 
+    [NuGetPackage("CycloneDX", "CycloneDX.dll", Framework = "net10.0")]
+    Tool CycloneDxTool;
+
     protected override void OnBuildInitialized()
     {
         Parameters = new BuildParameters(this, ScheduledTargets.Contains(BuildToNuGetCache));
@@ -62,7 +64,7 @@ partial class Build : NukeBuild
         Information("IsLocalBuild: " + Parameters.IsLocalBuild);
         Information("IsRunningOnUnix: " + Parameters.IsRunningOnUnix);
         Information("IsRunningOnWindows: " + Parameters.IsRunningOnWindows);
-        Information("IsRunningOnAzure:" + Parameters.IsRunningOnAzure);
+        Information("IsRunningOnGitHubActions: " + Parameters.IsRunningOnGitHubActions);
         Information("IsPullRequest: " + Parameters.IsPullRequest);
         Information("IsMainRepo: " + Parameters.IsMainRepo);
         Information("IsMasterBranch: " + Parameters.IsMasterBranch);
@@ -88,7 +90,7 @@ partial class Build : NukeBuild
 
     DotNetConfigHelper ApplySettingCore(DotNetConfigHelper c)
     {
-        if (Parameters.IsRunningOnAzure)
+        if (Parameters.IsRunningOnGitHubActions)
             c.AddProperty("JavaSdkDirectory", GetVariable<string>("JAVA_HOME_11_X64"));
         c.AddProperty("PackageVersion", Parameters.Version)
             .SetConfiguration(Parameters.Configuration)
@@ -148,37 +150,21 @@ partial class Build : NukeBuild
 
     Target CompileNative => _ => _
         .DependsOn(Clean)
-        .DependsOn(GenerateCppHeaders)
         .OnlyWhenStatic(() => EnvironmentInfo.IsOsx)
         .Executes(() =>
         {
-            var project = $"{RootDirectory}/native/Avalonia.Native/src/OSX/Avalonia.Native.OSX.xcodeproj/";
-            var args = $"-project {project} -configuration {Parameters.Configuration} CONFIGURATION_BUILD_DIR={RootDirectory}/Build/Products/Release";
-            ProcessTasks.StartProcess("xcodebuild", args).AssertZeroExitCode();
+            DotNetBuild(c => ApplySetting(c)
+                .SetProjectFile(RootDirectory / "native" / "Avalonia.Native" / "Avalonia.Native.macOS.csproj")
+                .AddProperty("BuildAvaloniaNativeXcodeProject", "True"));
         });
 
     Target Compile => _ => _
-        .DependsOn(Clean, CompileNative, InitDnx)
+        .DependsOn(Clean, InitDnx)
         .Executes(() =>
         {
             DotNetBuild(c => ApplySetting(c)
                 .SetProjectFile(Parameters.MSBuildSolution)
             );
-        });
-
-    Target OutputVersion => _ => _
-        .Requires(() => VersionOutputDir)
-        .Executes(() =>
-        {
-            var versionFile = Path.Combine(Parameters.VersionOutputDir, "version.txt");
-            var currentBuildVersion = Parameters.Version;
-            Console.WriteLine("Version is: " + currentBuildVersion);
-            File.WriteAllText(versionFile, currentBuildVersion);
-
-            var prIdFile = Path.Combine(Parameters.VersionOutputDir, "prId.txt");
-            var prId = Environment.GetEnvironmentVariable("SYSTEM_PULLREQUEST_PULLREQUESTNUMBER");
-            Console.WriteLine("PR Number  is: " + prId);
-            File.WriteAllText(prIdFile, prId);
         });
 
     void RunCoreTest(string projectName)
@@ -226,6 +212,10 @@ partial class Build : NukeBuild
             if (tfm == "$(AvsLegacyTargetFrameworks)")
             {
                 tfm = "net8.0";
+            }
+            if (tfm == "$(AvsCurrentWindowsTargetFramework)")
+            {
+                tfm = "net10.0-windows";
             }
             
             if (tfm.StartsWith("net4")
@@ -275,10 +265,14 @@ partial class Build : NukeBuild
             RunCoreTest("Avalonia.Markup.UnitTests");
             RunCoreTest("Avalonia.Markup.Xaml.UnitTests");
             RunCoreTest("Avalonia.Skia.UnitTests");
+            RunCoreTest("Avalonia.Themes.UnitTests");
             RunCoreTest("Avalonia.Headless.NUnit.PerAssembly.UnitTests");
             RunCoreTest("Avalonia.Headless.NUnit.PerTest.UnitTests");
             RunCoreTest("Avalonia.Headless.XUnit.PerAssembly.UnitTests");
             RunCoreTest("Avalonia.Headless.XUnit.PerTest.UnitTests");
+
+            if (Parameters.IsRunningOnWindows)
+                RunCoreTest("Avalonia.UnitTests.WpfCompare");
         });
 
     Target RunRenderTests => _ => _
@@ -307,13 +301,6 @@ partial class Build : NukeBuild
             RunCoreTest("Avalonia.LeakTests");
         });
 
-    Target ZipFiles => _ => _
-        .After(CreateNugetPackages, Compile, RunCoreLibsTests, Package)
-        .Executes(() =>
-        {
-            var data = Parameters;
-            Zip(data.ZipNuGetArtifacts, data.NugetRoot);
-        });
 
     Target CreateIntermediateNugetPackages => _ => _
         .DependsOn(Compile)
@@ -338,6 +325,20 @@ partial class Build : NukeBuild
             RefAssemblyGenerator.GenerateRefAsmsInPackage(
                 Parameters.NugetRoot / $"Avalonia.{Parameters.Version}.nupkg",
                 Parameters.NugetRoot / $"Avalonia.{Parameters.Version}.snupkg");
+        });
+
+    Target EmbedSbom => _ => _
+        .DependsOn(CreateNugetPackages)
+        .Executes(() =>
+        {
+            SbomGenerator.Generate(
+                CycloneDxTool,
+                RootDirectory,
+                Parameters.NugetRoot,
+                Parameters.NugetIntermediateRoot,
+                RootDirectory / "nukebuild" / "numerge.json",
+                Parameters.SbomRoot,
+                Parameters.Version);
         });
 
     Target DownloadApiBaselinePackages => _ => _
@@ -404,17 +405,17 @@ partial class Build : NukeBuild
         .DependsOn(CreateNugetPackages)
         .DependsOn(ValidateApiDiff);
 
-    Target CiAzureLinux => _ => _
+    Target CiLinux => _ => _
         .DependsOn(RunTests);
 
-    Target CiAzureOSX => _ => _
+    Target CiMacOS => _ => _
         .DependsOn(Package)
-        .DependsOn(ZipFiles);
+        .DependsOn(EmbedSbom);
 
-    Target CiAzureWindows => _ => _
+    Target CiWindows => _ => _
         .DependsOn(Package)
         .DependsOn(VerifyXamlCompilation)
-        .DependsOn(ZipFiles);
+        .DependsOn(EmbedSbom);
 
     Target BuildToNuGetCache => _ => _
         .DependsOn(CreateNugetPackages)
@@ -428,12 +429,10 @@ partial class Build : NukeBuild
             
             foreach (var path in Parameters.NugetRoot.GlobFiles("*.nupkg"))
             {
+                var packageId = SbomGenerator.ReadPackageId(path);
+
                 using var f = File.Open(path.ToString(), FileMode.Open, FileAccess.Read);
                 using var zip = new ZipArchive(f, ZipArchiveMode.Read);
-                var nuspecEntry = zip.Entries.First(e => e.FullName.EndsWith(".nuspec") && e.FullName == e.Name);
-                var packageId = XDocument.Load(nuspecEntry.Open()).Document.Root
-                    .Elements().First(x => x.Name.LocalName == "metadata")
-                    .Elements().First(x => x.Name.LocalName == "id").Value;
 
                 var packagePath = Path.Combine(
                     globalPackagesFolder,
@@ -451,14 +450,6 @@ partial class Build : NukeBuild
 }");
             }
         });
-
-    Target GenerateCppHeaders => _ => _.Executes(() =>
-    {
-        var file = MicroComCodeGenerator.Parse(
-            File.ReadAllText(RootDirectory / "src" / "Avalonia.Native" / "avn.idl"));
-        File.WriteAllText(RootDirectory / "native" / "Avalonia.Native" / "inc" / "avalonia-native.h",
-            file.GenerateCppHeader());
-    });
 
     Target GenerateUnicodeData => _ => _.Executes(() =>
     {

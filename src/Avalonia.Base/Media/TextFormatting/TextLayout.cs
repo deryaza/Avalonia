@@ -601,16 +601,39 @@ namespace Avalonia.Media.TextFormatting
 
                     _textSourceLength += textLine.Length;
 
-                    //Fulfill max height constraint
-                    if (textLines.Count > 0 && !double.IsPositiveInfinity(MaxHeight)
-                        && Height + textLine.Height > MaxHeight)
-                    {
-                        if (previousLine?.TextLineBreak != null && _textTrimming != TextTrimming.None)
-                        {
-                            var collapsedLine =
-                                previousLine.Collapse(GetCollapsingProperties(MaxWidth));
+                    // Whether this freshly fetched candidate line represents real, visible content rather
+                    // than just a trailing line-break sentinel (some text sources emit an explicit
+                    // TextEndOfLine/TextEndOfParagraph run object at end-of-text with no visible content).
+                    var hasRealContent = textLine.Length > textLine.NewLineLength;
 
-                            textLines[textLines.Count - 1] = collapsedLine;
+                    //Fulfill max height constraint. The mere existence of this next candidate line (which
+                    //hasn't been added yet) proves there is more content than fits. Only add an ellipsis
+                    //if the last visible line was cut by word-wrap (IsSplit). If it ended at a hard break
+                    //the line itself was not trimmed, and hiding the following paragraph is clipped
+                    //silently like CSS max-height with overflow:hidden.
+                    if (textLines.Count > 0 && !double.IsPositiveInfinity(MaxHeight)
+                        && MathUtilities.GreaterThan(Height + textLine.Height, MaxHeight))
+                    {
+                        var lastLine = (TextLineImpl)textLines[textLines.Count - 1];
+
+                        if (_textTrimming != TextTrimming.None && hasRealContent
+                            && lastLine.TextLineBreak is { IsSplit: true })
+                        {
+                            textLines[textLines.Count - 1] = CollapseForTruncation(lastLine);
+                        }
+
+                        break;
+                    }
+
+                    //Fulfill max lines constraint. The next candidate line's existence proves the previously
+                    //added (Max-th) line hides real content. Unlike the height limit this ellipsizes after a
+                    //hard break too, like CSS line-clamp.
+                    if (MaxLines > 0 && textLines.Count >= MaxLines)
+                    {
+                        if (_textTrimming != TextTrimming.None && hasRealContent)
+                        {
+                            textLines[textLines.Count - 1] = CollapseForTruncation(
+                                (TextLineImpl)textLines[textLines.Count - 1]);
                         }
 
                         break;
@@ -629,17 +652,6 @@ namespace Avalonia.Media.TextFormatting
 
                     previousLine = textLine;
 
-                    //Fulfill max lines constraint
-                    if (MaxLines > 0 && textLines.Count >= MaxLines)
-                    {
-                        if (textLine.TextLineBreak is { IsSplit: true })
-                        {
-                            textLines[textLines.Count - 1] = textLine.Collapse(GetCollapsingProperties(WidthIncludingTrailingWhitespace));
-                        }
-
-                        break;
-                    }
-
                     if (textLine.TextLineBreak?.TextEndOfLine is TextEndOfParagraph)
                     {
                         break;
@@ -657,20 +669,32 @@ namespace Avalonia.Media.TextFormatting
 
                 if (_paragraphProperties.TextAlignment == TextAlignment.Justify)
                 {
+                    // Justify fills each line to the column width, which is MaxWidth for both
+                    // wrapped and non-wrapped text. Targeting the widest produced line instead
+                    // (the previous behaviour for wrapping) leaves wrapped text short of the
+                    // margin, since the full non-last lines already equal that width. When
+                    // MaxWidth is infinite there is no column to fill, so skip.
                     var justificationWidth = MaxWidth;
 
-                    if (_paragraphProperties.TextWrapping != TextWrapping.NoWrap)
-                    {
-                        justificationWidth = WidthIncludingTrailingWhitespace;
-                    }
-
-                    if (justificationWidth > 0)
+                    if (!double.IsInfinity(justificationWidth) && justificationWidth > 0)
                     {
                         var justificationProperties = new InterWordJustification(justificationWidth);
 
                         for (var i = 0; i < textLines.Count; i++)
                         {
                             var line = textLines[i];
+
+                            // Only width-driven wrapped lines are stretched to the column. Skip
+                            // the last line of the layout, any line ended by a newline
+                            // (NewLineLength > 0), and any line ended by a source-provided required
+                            // break (TextEndOfLine) - these stay start-aligned per standard
+                            // typographic convention.
+                            if (i == textLines.Count - 1
+                                || line.NewLineLength > 0
+                                || line.TextLineBreak?.TextEndOfLine != null)
+                            {
+                                continue;
+                            }
 
                             line.Justify(justificationProperties);
                         }
@@ -735,6 +759,21 @@ namespace Avalonia.Media.TextFormatting
 
             return _textTrimming.CreateCollapsingProperties(
                 new TextCollapsingCreateInfo(width, _paragraphProperties.DefaultTextRunProperties, _paragraphProperties.FlowDirection));
+        }
+
+        private TextLineImpl CollapseForTruncation(TextLineImpl line)
+        {
+            // Collapse against the line's own rendered width rather than MaxWidth, so there's
+            // always room reserved for the ellipsis symbol and a trailing ellipsis is reliably
+            // produced, even if the line already fits within MaxWidth on its own.
+            var collapsingProperties = GetCollapsingProperties(line.WidthIncludingTrailingWhitespace);
+
+            if (collapsingProperties is null)
+            {
+                return line;
+            }
+
+            return (TextLineImpl)line.Collapse(collapsingProperties);
         }
 
         public void Dispose()

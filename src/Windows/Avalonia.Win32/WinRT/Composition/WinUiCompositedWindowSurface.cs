@@ -1,18 +1,19 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using Avalonia.OpenGL.Egl;
 using Avalonia.Platform;
+using Avalonia.Rendering.Composition;
 using Avalonia.Win32.DirectX;
 using Avalonia.Win32.Interop;
 using MicroCom.Runtime;
 
 namespace Avalonia.Win32.WinRT.Composition
 {
-    internal class WinUiCompositedWindowSurface : IDirect3D11TexturePlatformSurface, IDisposable, ICompositionEffectsSurface
+    internal class WinUiCompositedWindowSurface : IDirect3D11TexturePlatformSurface, IDirect3D11TexturePlatformSurface2, IDisposable, ICompositionEffectsSurface
     {
         private readonly WinUiCompositionShared _shared;
         private readonly EglGlPlatformSurface.IEglWindowGlPlatformSurfaceInfo _info;
         private WinUiCompositedWindow? _window;
-        private BlurEffect _blurEffect;
 
         public WinUiCompositedWindowSurface(WinUiCompositionShared shared, EglGlPlatformSurface.IEglWindowGlPlatformSurfaceInfo info)
         {
@@ -20,12 +21,16 @@ namespace Avalonia.Win32.WinRT.Composition
             _info = info;
         }
 
-        public IDirect3D11TextureRenderTarget CreateRenderTarget(IPlatformGraphicsContext context, IntPtr d3dDevice)
+        IDirect3D11TextureRenderTarget IDirect3D11TexturePlatformSurface.CreateRenderTarget(IPlatformGraphicsContext context, IntPtr d3dDevice)
+        {
+           return (IDirect3D11TextureRenderTarget) CreateRenderTarget(context, d3dDevice);
+        }
+
+        public IDirect3D11TextureRenderTarget2 CreateRenderTarget(IPlatformGraphicsContext context, IntPtr d3dDevice)
         {
             var cornerRadius = AvaloniaLocator.Current.GetService<Win32PlatformOptions>()
                 ?.WinUICompositionBackdropCornerRadius;
             _window ??= new WinUiCompositedWindow(_info, _shared, cornerRadius);
-            _window.SetBlur(_blurEffect);
 
             return new WinUiCompositedWindowRenderTarget(context, _window, d3dDevice, _shared.Compositor);
         }
@@ -44,15 +49,9 @@ namespace Avalonia.Win32.WinRT.Composition
             BlurEffect.MicaDark => Win32Platform.WindowsVersion >= WinUiCompositionShared.MinHostBackdropVersion,
             _ => false
         };
-
-        public void SetBlur(BlurEffect enable)
-        {
-            _blurEffect = enable;
-            _window?.SetBlur(enable);
-        }
     }
 
-    internal class WinUiCompositedWindowRenderTarget : IDirect3D11TextureRenderTarget
+    internal class WinUiCompositedWindowRenderTarget : IDirect3D11TextureRenderTarget, IDirect3D11TextureRenderTarget2
     {
         private static readonly Guid IID_ID3D11Texture2D = Guid.Parse("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
 
@@ -63,11 +62,12 @@ namespace Avalonia.Win32.WinRT.Composition
         private readonly ICompositorInterop _interop;
         private readonly ICompositionGraphicsDevice _compositionDevice;
         private readonly ICompositionGraphicsDevice2 _compositionDevice2;
-        private readonly ICompositionSurface _surface;
+        private ICompositionSurface? _surface;
         private PixelSize _size;
         private bool _lost;
-        private readonly ICompositionDrawingSurfaceInterop _surfaceInterop;
-        private readonly ICompositionDrawingSurface _drawingSurface;
+        private bool _isSurfaceSupportTransparency;
+        private ICompositionDrawingSurfaceInterop? _surfaceInterop;
+        private ICompositionDrawingSurface? _drawingSurface;
 
         public WinUiCompositedWindowRenderTarget(IPlatformGraphicsContext context,
             WinUiCompositedWindow window, IntPtr device,
@@ -83,16 +83,9 @@ namespace Avalonia.Win32.WinRT.Composition
                 _interop = compositor.QueryInterface<ICompositorInterop>();
                 _compositionDevice = _interop.CreateGraphicsDevice(_d3dDevice);
                 _compositionDevice2 = _compositionDevice.QueryInterface<ICompositionGraphicsDevice2>();
-                _drawingSurface = _compositionDevice2.CreateDrawingSurface2(new UnmanagedMethods.SIZE(),
-                    DirectXPixelFormat.B8G8R8A8UIntNormalized, DirectXAlphaMode.Premultiplied);
-                _surface = _drawingSurface.QueryInterface<ICompositionSurface>();
-                _surfaceInterop = _drawingSurface.QueryInterface<ICompositionDrawingSurfaceInterop>();
             }
             catch
             {
-                _surface?.Dispose();
-                _surfaceInterop?.Dispose();
-                _drawingSurface?.Dispose();
                 _compositionDevice2?.Dispose();
                 _compositionDevice?.Dispose();
                 _interop?.Dispose();
@@ -104,9 +97,9 @@ namespace Avalonia.Win32.WinRT.Composition
 
         public void Dispose()
         {
-            _surface.Dispose();
-            _surfaceInterop.Dispose();
-            _drawingSurface.Dispose();
+            _surface?.Dispose();
+            _surfaceInterop?.Dispose();
+            _drawingSurface?.Dispose();
             _compositionDevice2.Dispose();
             _compositionDevice.Dispose();
             _interop.Dispose();
@@ -114,20 +107,65 @@ namespace Avalonia.Win32.WinRT.Composition
             _d3dDevice.Dispose();
         }
 
+        [MemberNotNull(nameof(_drawingSurface), nameof(_surface), nameof(_surfaceInterop))]
+        private void CreateSurface(in IRenderTarget.RenderTargetSceneInfo sceneInfo)
+        {
+            bool isTransparency = sceneInfo.TransparencyLevel != CompositionTransparencyLevel.None;
+            var surfaceSize = sceneInfo.Size;
+
+            // Do not use Premultiplied when the window is not Transparency. Because the Premultiplied AlphaMode will increase the performance loss of DWM. See https://github.com/AvaloniaUI/Avalonia/issues/20643
+            var alphaMode = isTransparency ? DirectXAlphaMode.Premultiplied : DirectXAlphaMode.Ignore;
+            _drawingSurface = _compositionDevice2.CreateDrawingSurface2(new UnmanagedMethods.SIZE()
+                {
+                    X = surfaceSize.Width, 
+                    Y = surfaceSize.Height,
+                },
+                DirectXPixelFormat.B8G8R8A8UIntNormalized, alphaMode);
+            _surface = _drawingSurface.QueryInterface<ICompositionSurface>();
+            _surfaceInterop = _drawingSurface.QueryInterface<ICompositionDrawingSurfaceInterop>();
+
+            _isSurfaceSupportTransparency = isTransparency;
+            _size = surfaceSize;
+        }
+
         public PlatformRenderTargetState State =>
             _context.IsLost || _lost ? PlatformRenderTargetState.Corrupted : PlatformRenderTargetState.Ready;
 
-        public unsafe IDirect3D11TextureRenderTargetRenderSession BeginDraw()
+        IDirect3D11TextureRenderTargetRenderSession IDirect3D11TextureRenderTarget.BeginDraw()
+        {
+            var fallbackSceneInfo = new IRenderTarget.RenderTargetSceneInfo(_window.WindowInfo.Size,
+                _window.WindowInfo.Scaling, CompositionTransparencyLevel.None);
+            return BeginDraw(fallbackSceneInfo);
+        }
+
+        public unsafe IDirect3D11TextureRenderTargetRenderSession BeginDraw(
+            IRenderTarget.RenderTargetSceneInfo sceneInfo)
         {
             if (State.IsCorrupted)
                 throw new RenderTargetCorruptedException();
             var transaction = _window.BeginTransaction();
+
             bool needsEndDraw = false;
             try
             {
-                var size = _window.WindowInfo.Size;
-                var scale = _window.WindowInfo.Scaling;
+                bool isTransparency = sceneInfo.TransparencyLevel != CompositionTransparencyLevel.None;
+               
+                if (_surface is null || _surfaceInterop is null || _drawingSurface is null || _isSurfaceSupportTransparency != isTransparency)
+                {
+                    // Re-create the surface with correct alpha mode if the transparency support is not correct. This can happen when the transparency level is changed.
+                    _surface?.Dispose();
+                    _surfaceInterop?.Dispose();
+                    _drawingSurface?.Dispose();
+
+                    CreateSurface(in sceneInfo);
+                }
+
+                var size = sceneInfo.Size;
+                var scale = sceneInfo.Scaling;
                 _window.ResizeIfNeeded(size);
+                _window.ApplyEffects(sceneInfo.TransparencyLevel,
+                    (sceneInfo.PlatformSpecificSceneInfo as Win32TopLevelSceneInfo)?.ThemeVariant ??
+                    PlatformThemeVariant.Light);
                 _window.SetSurface(_surface);
                 
                 void* pTexture;
@@ -165,7 +203,7 @@ namespace Avalonia.Win32.WinRT.Composition
                 if (transaction != null)
                 {
                     if (needsEndDraw)
-                        _surfaceInterop.EndDraw();
+                        _surfaceInterop?.EndDraw();
                     transaction.Dispose();
                 }
             }

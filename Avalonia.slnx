@@ -1,21 +1,13 @@
 <Solution>
-  <Configurations>
-    <Platform Name="Any CPU" />
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
   <Folder Name="/Android/">
     <Project Path="src/Android/Avalonia.Android/Avalonia.Android.csproj" />
   </Folder>
   <Folder Name="/Browser/">
     <Project Path="src/Browser/Avalonia.Browser/Avalonia.Browser.csproj" />
   </Folder>
-  <Folder Name="/external/" />
-  <Folder Name="/external/Avalonia.Controls.DataGrid/" />
   <Folder Name="/external/Avalonia.Controls.DataGrid/src/">
     <Project Path="external/Avalonia.Controls.DataGrid/src/Avalonia.Controls.DataGrid/Avalonia.Controls.DataGrid.csproj" />
   </Folder>
-  <Folder Name="/external/ReactiveUI.Avalonia/" />
   <Folder Name="/external/ReactiveUI.Avalonia/src/">
     <Project Path="external/ReactiveUI.Avalonia/src/ReactiveUI.Avalonia/ReactiveUI.Avalonia.csproj" />
   </Folder>
@@ -48,7 +40,7 @@
     <Project Path="src/Avalonia.Desktop/Avalonia.Desktop.csproj" />
   </Folder>
   <Folder Name="/Props/">
-    <File Path="build/AnalyzerProject.targets" />
+    <File Path="build/AvaloniaNative.props" />
     <File Path="build/AvaloniaPublicKey.props" />
     <File Path="build/Base.props" />
     <File Path="build/CoreLibraries.props" />
@@ -146,8 +138,6 @@
     <File Path="NuGet.Config" />
     <File Path="readme.md" />
   </Folder>
-  <Folder Name="/src/" />
-  <Folder Name="/src/tools/" />
   <Folder Name="/Targets/">
     <File Path="build/AnalyzerProject.targets" />
     <File Path="build/BuildTargets.targets" />
@@ -155,6 +145,7 @@
     <File Path="build/UnitTests.NetCore.targets" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="tests/Avalonia.Analyzers.Tests/Avalonia.Analyzers.Tests.csproj" />
     <Project Path="tests/Avalonia.Base.UnitTests/Avalonia.Base.UnitTests.csproj" />
     <Project Path="tests/Avalonia.Benchmarks/Avalonia.Benchmarks.csproj" />
     <Project Path="tests/Avalonia.Build.Tasks.UnitTest/Avalonia.Build.Tasks.UnitTest.csproj" />
@@ -174,6 +165,7 @@
     <Project Path="tests/Avalonia.RenderTests.WpfCompare/Avalonia.RenderTests.WpfCompare.csproj" />
     <Project Path="tests/Avalonia.Skia.RenderTests/Avalonia.Skia.RenderTests.csproj" />
     <Project Path="tests/Avalonia.Skia.UnitTests/Avalonia.Skia.UnitTests.csproj" />
+    <Project Path="tests/Avalonia.Themes.UnitTests/Avalonia.Themes.UnitTests.csproj" />
     <Project Path="tests/Avalonia.UnitTests/Avalonia.UnitTests.csproj" />
     <Project Path="tests/Avalonia.Wayland.UnitTests/Avalonia.Wayland.UnitTests.csproj" />
   </Folder>

@@ -142,6 +142,8 @@ namespace ControlCatalog.Desktop
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
+                .WithDataAnnotationsValidation()
+                .UseWaylandWithFallback()
                 .With(new X11PlatformOptions
                 {
                     UseXEmbedTrayMenu = true,
@@ -163,6 +165,7 @@ namespace ControlCatalog.Desktop
                 })
                 .UseSkia()
                 .WithInterFont()
+                .WithDeveloperTools()
                 .AfterSetup(builder =>
                 {
                     EmbedSample.Implementation = OperatingSystem.IsWindows() ? new EmbedSampleWin()

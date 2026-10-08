@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,6 +8,7 @@ using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.DBus;
+using Avalonia.FreeDesktop.AtSpi.DBusXml;
 using Avalonia.FreeDesktop.AtSpi.Handlers;
 using Avalonia.Logging;
 using static Avalonia.FreeDesktop.AtSpi.AtSpiConstants;
@@ -139,6 +141,49 @@ namespace Avalonia.FreeDesktop.AtSpi
             return string.IsNullOrWhiteSpace(visualTypeName) ? string.Empty : visualTypeName;
         }
 
+        /// <summary>
+        /// Builds the AT-SPI object attributes reported for a peer.
+        /// </summary>
+        /// <param name="peer">The peer to read attributes from.</param>
+        /// <returns>The attributes shared by Accessible.GetAttributes and Collection matching.</returns>
+        internal static AtSpiAttributeSet GetAttributes(AutomationPeer peer)
+        {
+            var attrs = new AtSpiAttributeSet { ["toolkit"] = "Avalonia" };
+
+            var name = peer.GetName();
+            if (!string.IsNullOrEmpty(name))
+                attrs["explicit-name"] = "true";
+
+            var acceleratorKey = peer.GetAcceleratorKey();
+            if (!string.IsNullOrEmpty(acceleratorKey))
+                attrs["accelerator-key"] = acceleratorKey;
+
+            var accessKey = peer.GetAccessKey();
+            if (!string.IsNullOrEmpty(accessKey))
+                attrs["access-key"] = accessKey;
+
+            var placeholderText = peer.GetPlaceholderText();
+            if (!string.IsNullOrEmpty(placeholderText))
+                attrs["placeholder-text"] = placeholderText;
+
+            var headingLevel = peer.GetHeadingLevel();
+            if (headingLevel > 0)
+                attrs["level"] = headingLevel.ToString(CultureInfo.InvariantCulture);
+
+            if (peer is ControlAutomationPeer controlPeer)
+            {
+                var position = AutomationProperties.GetPositionInSet(controlPeer.Owner);
+                if (position > 0)
+                    attrs["posinset"] = position.ToString(CultureInfo.InvariantCulture);
+
+                var size = AutomationProperties.GetSizeOfSet(controlPeer.Owner);
+                if (size > 0)
+                    attrs["setsize"] = size.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return attrs;
+        }
+
         internal void Attach(AtSpiNode? parent)
         {
             if (_detached)
@@ -164,6 +209,30 @@ namespace Avalonia.FreeDesktop.AtSpi
 
         internal bool RemoveAttachedChild(AtSpiNode child) => _attachedChildren.Remove(child);
 
+        // Present a selection container's realized item containers as its direct
+        // AT-SPI children so SelectChild-by-index and parent lookups work.
+        private IReadOnlyList<AutomationPeer> GetChildPeers()
+        {
+            if (Peer.GetProvider<ISelectionProvider>() is null)
+                return Peer.GetChildren();
+
+            var items = new List<AutomationPeer>();
+            CollectSelectionItemPeers(Peer.GetChildren(), items);
+            return items.Count > 0 ? items : Peer.GetChildren();
+        }
+
+        private static void CollectSelectionItemPeers(
+            IReadOnlyList<AutomationPeer> peers, List<AutomationPeer> result)
+        {
+            foreach (var peer in peers)
+            {
+                if (peer.GetProvider<ISelectionItemProvider>() is not null)
+                    result.Add(peer);
+                else
+                    CollectSelectionItemPeers(peer.GetChildren(), result);
+            }
+        }
+
         internal IReadOnlyList<AtSpiNode> EnsureChildren()
         {
             if (!IsAttached)
@@ -172,7 +241,7 @@ namespace Avalonia.FreeDesktop.AtSpi
             if (!_childrenDirty)
                 return _attachedChildren;
 
-            var childPeers = Peer.GetChildren();
+            var childPeers = GetChildPeers();
             var nextChildren = new List<AtSpiNode>(childPeers.Count);
             var nextChildrenSet = new HashSet<AtSpiNode>();
             foreach (var childPeer in childPeers)
@@ -275,7 +344,7 @@ namespace Avalonia.FreeDesktop.AtSpi
 
             _childrenDirty = true;
 
-            var childPeers = Peer.GetChildren();
+            var childPeers = GetChildPeers();
             if (_attachedChildren.Count > 0)
             {
                 var currentPeers = new HashSet<AutomationPeer>(childPeers);

@@ -1,4 +1,4 @@
-﻿using Avalonia.Media;
+using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Rendering.SceneGraph;
 using Avalonia.Utilities;
@@ -120,8 +120,13 @@ namespace Avalonia.Base.UnitTests.Rendering.SceneGraph
         {
             var ctx = new TestContext(_services);
             using (ctx.Context.PushTransform(new Matrix()))
-                ctx.Context.DrawGeometry(Brushes.Black, null, Mock.Of<IGeometryImpl>());
-            Assert.False(ctx.Context.GetRenderResults()!.HitTest(default));
+            {
+                var geometry = new Mock<IGeometryImpl>();
+                geometry.Setup(g => g.GeometryImpl).Returns(geometry.Object);
+                ctx.Context.DrawGeometry(Brushes.Black, null, geometry.Object);
+            }
+
+            Assert.False(ctx.Context.GetRenderResults()!.HitTest(default(Point)));
         }
 
         [Fact]
@@ -405,6 +410,7 @@ namespace Avalonia.Base.UnitTests.Rendering.SceneGraph
         public void Geometry_Node_HitTest_Uses_FillContains_When_Brush_Set()
         {
             var geomMock = new Mock<IGeometryImpl>();
+            geomMock.Setup(g => g.GeometryImpl).Returns(geomMock.Object);
             geomMock.Setup(g => g.FillContains(new Point(5, 5))).Returns(true);
             geomMock.Setup(g => g.FillContains(new Point(50, 50))).Returns(false);
 
@@ -421,6 +427,7 @@ namespace Avalonia.Base.UnitTests.Rendering.SceneGraph
         {
             var pen = new ImmutablePen(Brushes.Black, 1);
             var geomMock = new Mock<IGeometryImpl>();
+            geomMock.Setup(g => g.GeometryImpl).Returns(geomMock.Object);
             geomMock.Setup(g => g.StrokeContains(pen, new Point(5, 5))).Returns(true);
             geomMock.Setup(g => g.StrokeContains(pen, new Point(50, 50))).Returns(false);
 
@@ -474,6 +481,7 @@ namespace Avalonia.Base.UnitTests.Rendering.SceneGraph
             public double Opacity => 1;
             public ITransform? Transform => null;
             public RelativePoint TransformOrigin => default;
+            public ITransform? RelativeTransform => null;
             public void AddRefOnCompositor(Compositor c) => AddRefCount++;
             public void ReleaseOnCompositor(Compositor c) => ReleaseCount++;
             public IBrush GetForCompositor(Compositor c) => this;
@@ -500,6 +508,7 @@ namespace Avalonia.Base.UnitTests.Rendering.SceneGraph
             public double Opacity => 1;
             public ITransform? Transform => null;
             public RelativePoint TransformOrigin => default;
+            public ITransform? RelativeTransform => null;
             public void AddRefOnCompositor(Compositor c) => AddRefCount++;
             public void ReleaseOnCompositor(Compositor c) { }
             public IBrush GetForCompositor(Compositor c) => this;

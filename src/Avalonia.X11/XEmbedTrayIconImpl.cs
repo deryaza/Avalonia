@@ -72,7 +72,7 @@ namespace Avalonia.X11
             // initial state
             SetIsVisible(false);
 
-            platform.Windows[_iconWindow] = WndProc;
+            platform.Windows[_iconWindow] = new X11WindowInfo(WndProc, null);
 
             // do the docking
             XEvent ev = new()
