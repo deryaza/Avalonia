@@ -9,7 +9,7 @@
     <Project Path="external/Avalonia.Controls.DataGrid/src/Avalonia.Controls.DataGrid/Avalonia.Controls.DataGrid.csproj" />
   </Folder>
   <Folder Name="/external/ReactiveUI.Avalonia/src/">
-    <Project Path="external/ReactiveUI.Avalonia/src/ReactiveUI.Avalonia/ReactiveUI.Avalonia.csproj" />
+    <Project Path="external/ReactiveUI.Avalonia/src/ReactiveUI.Avalonia.Reactive/ReactiveUI.Avalonia.Reactive.csproj" />
   </Folder>
   <Folder Name="/HarfBuzz/">
     <Project Path="src/HarfBuzz/Avalonia.HarfBuzz/Avalonia.HarfBuzz.csproj" />

@@ -3,7 +3,7 @@
     "path": "Avalonia.slnx",
     "projects": [
       "external\\Avalonia.Controls.DataGrid\\src\\Avalonia.Controls.DataGrid\\Avalonia.Controls.DataGrid.csproj",
-      "external\\ReactiveUI.Avalonia\\src\\ReactiveUI.Avalonia\\ReactiveUI.Avalonia.csproj",
+      "external\\ReactiveUI.Avalonia\\src\\ReactiveUI.Avalonia.Reactive\\ReactiveUI.Avalonia.Reactive.csproj",
       "packages\\Avalonia\\Avalonia.csproj",
       "samples\\AppWithoutLifetime\\AppWithoutLifetime.csproj",
       "samples\\ControlCatalog.Desktop\\ControlCatalog.Desktop.csproj",

@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
-using ReactiveUI;
+using ReactiveUI.Binding.Reactive;
 using ReactiveUIDemo.ViewModels;
 
 namespace ReactiveUIDemo.Views

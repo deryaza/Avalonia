@@ -1,8 +1,8 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using ReactiveUI;
-using ReactiveUI.Avalonia;
+using ReactiveUI.Binding.Reactive;
+using ReactiveUI.Avalonia.Reactive;
 using ReactiveUIDemo.ViewModels;
 using ReactiveUIDemo.Views;
 using Splat;
@@ -14,8 +14,8 @@ namespace ReactiveUIDemo
         public override void Initialize()
         {
             AvaloniaXamlLoader.Load(this);
-            Locator.CurrentMutable.Register(() => new FooView(), typeof(IViewFor<FooViewModel>));
-            Locator.CurrentMutable.Register(() => new BarView(), typeof(IViewFor<BarViewModel>));
+            AppLocator.CurrentMutable.Register(() => new FooView(), typeof(IViewFor<FooViewModel>));
+            AppLocator.CurrentMutable.Register(() => new BarView(), typeof(IViewFor<BarViewModel>));
         }
 
         public override void OnFrameworkInitializationCompleted()
